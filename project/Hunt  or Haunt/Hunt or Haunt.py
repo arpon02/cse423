@@ -205,7 +205,6 @@ def draw_obstacles_and_items():
                     glPopMatrix()
 
 
-
 def idle():
     current_time = time.time()
     global last_time
