@@ -8,7 +8,12 @@ import math
 #globl variables :
 tile_size = 100
 grid_size = 8
-
+camera_radius = 500.0
+camera_height = 500.0
+camera_angle = 90.0
+deg2rad = math.pi / 180.0
+camera_mode = 0#aerial=0,fpv=1
+fovY = 120
 quad = None
 
 player_tile_x = 3
@@ -22,6 +27,9 @@ speed_level = 0
 cooldown_base = 0.5
 last_move = 0
 consecutive_mushrooms = 0
+blink_start = 0
+blink_color = (1, 1, 1)
+invisible_start = 0
 scan_start = 0
 game_over = False
 win = False
@@ -34,10 +42,21 @@ dug = {}
 obstacles = {}
 removed = set()
 
-
+bear_active = False
+bear_spawn_time = 0
+bear_start_time = 0
+bear_in_los_time = 0
+bear_out_los_time = 0
+bear_attacking = False
+bear_tile = (0, 0)
+bear_pos = (0, 0, 0)
+bear_dir = 0
+last_bear_move = 0
+bear_path = []
+consecutive_bear = 0
 
 def init_game():
-    global player_tile_x, player_tile_y, player_pos, health, score, attempts, speed_level, consecutive_mushrooms, game_over, win, items, dug, obstacles, removed,
+    global player_tile_x, player_tile_y, player_pos, health, score, attempts, speed_level, consecutive_mushrooms, game_over, win, items, dug, obstacles, removed, bear_spawn_time
     player_tile_x = 3
     player_tile_y = 3
     player_dir = 0
@@ -164,11 +183,46 @@ def draw_player():
     gluCylinder(quad, 8, 8, 30, 10, 10)
     glPopMatrix()
     #head:
-    
+    if blink_start > 0 and current_time - blink_start < 0.5:
+        glColor3f(*blink_color)
+    else:
+        glColor3f(0, 0, 0)
     glTranslatef(0, 0, 120)
     gluSphere(quad, 20, 10, 10)
     glPopMatrix()
 
+def draw_bear():
+    glPushMatrix()
+    glTranslatef(bear_pos[0], bear_pos[1], 0)
+    glRotatef(bear_dir * 90, 0, 0, 1)
+    #legs:
+    glColor3f(0.6, 0.3, 0.0)
+    glPushMatrix()
+    glTranslatef(-15, 0, 0)
+    gluCylinder(quad, 12, 12, 50, 10, 10)
+    glPopMatrix()
+    glPushMatrix()
+    glTranslatef(15, 0, 0)
+    gluCylinder(quad, 12, 12, 50, 10, 10)
+    glPopMatrix()
+    #body:
+    glTranslatef(0, 0, 30)
+    gluSphere(quad, 30, 10, 10)
+    #arms:
+    glPushMatrix()
+    glTranslatef(-20, 20, 20)
+    glRotatef(90, 1, 0, 0)
+    gluCylinder(quad, 10, 10, 30, 10, 10)
+    glPopMatrix()
+    glPushMatrix()
+    glTranslatef(20, 20, 20)
+    glRotatef(90, 1, 0, 0)
+    gluCylinder(quad, 10, 10, 30, 10, 10)
+    glPopMatrix()
+    #head:
+    glTranslatef(0, 0, 50)
+    gluSphere(quad, 20, 10, 10)
+    glPopMatrix()
 
 def draw_red_dot():
     dx, dy = dir_delta[player_dir]
@@ -272,10 +326,22 @@ def keyboardListener(key, x, y):
             print("Camera angle changed to fpv")
     glutPostRedisplay()
 
-
+def specialKeyListener(key, x, y):
+    global camera_angle, camera_height
+    if camera_mode == 0:
+        if key == GLUT_KEY_LEFT:
+            camera_angle -= 5
+        elif key == GLUT_KEY_RIGHT:
+            camera_angle += 5
+        elif key == GLUT_KEY_UP:
+            camera_height += 10
+        elif key == GLUT_KEY_DOWN:
+            camera_height = max(100, camera_height - 10)
+        camera_angle %= 360
+    glutPostRedisplay()
 
 def mouseListener(button, state, x, y):
-    global attempts, score, health, speed_level, consecutive_mushrooms, game_over, win
+    global attempts, score, health, speed_level, consecutive_mushrooms, blink_start, blink_color, game_over, win
     current_time = time.time()
     if game_over or win:
         return
@@ -299,6 +365,8 @@ def mouseListener(button, state, x, y):
                 elif item == 'fruit':
                     health = min(5, health + 1)
                     speed_level = min(3, speed_level + 1)
+                    blink_start = current_time
+                    blink_color = (0, 1, 0)
                     consecutive_mushrooms = 0
                     print("Fruit found")
                 elif item == 'mushroom':
@@ -318,6 +386,104 @@ def mouseListener(button, state, x, y):
                     game_over = True
     glutPostRedisplay()
 
+def update_bear(delta):
+    global bear_active, bear_spawn_time, bear_start_time, bear_in_los_time, bear_out_los_time, bear_attacking, bear_tile, bear_pos, bear_dir, last_bear_move, bear_path, health, blink_start, blink_color, consecutive_bear, game_over
+    current_time = time.time()
+    if not bear_active:
+        if current_time - bear_spawn_time > 15:
+            side = random.randrange(4)
+            if side == 0:  # north
+                bx = random.randrange(grid_size)
+                by = grid_size
+                bear_dir = 2
+            elif side == 1:  # east
+                bx = grid_size
+                by = random.randrange(grid_size)
+                bear_dir = 3
+            elif side == 2:  # south
+                bx = random.randrange(grid_size)
+                by = -1
+                bear_dir = 0
+            elif side == 3:  # west
+                bx = -1
+                by = random.randrange(grid_size)
+                bear_dir = 1
+            bear_tile = (bx, by)
+            bear_pos = tile_center(bx, by)
+            bear_active = True
+            bear_start_time = current_time
+            bear_in_los_time = 0
+            bear_out_los_time = 0
+            bear_attacking = False
+            bear_path = []
+            last_bear_move = current_time
+    if bear_active:
+        total_time = current_time - bear_start_time
+        if total_time > 12:
+            bear_active = False
+            bear_spawn_time = current_time
+            consecutive_bear = 0
+            return
+        invisible = (invisible_start > 0 and current_time - invisible_start < 5)
+        in_los = False
+        if not invisible:
+            dx, dy = dir_delta[bear_dir]
+            cx, cy = bear_tile[0] + dx, bear_tile[1] + dy
+            line = []
+            while 0 <= cx < grid_size and 0 <= cy < grid_size:
+                line.append((cx, cy))
+                cx += dx
+                cy += dy
+            if (player_tile_x, player_tile_y) in line:
+                p_index = line.index((player_tile_x, player_tile_y))
+                blocked = False
+                for tt in line[0:p_index]:
+                    if tt in obstacles and tt not in removed:
+                        blocked = True
+                        break
+                if not blocked:
+                    in_los = True
+        if in_los:
+            bear_in_los_time += delta
+            bear_out_los_time = 0
+            if bear_in_los_time > 3 and not bear_attacking:
+                bear_attacking = True
+                bear_path = []
+                cx, cy = bear_tile[0], bear_tile[1]
+                while (cx, cy) != (player_tile_x, player_tile_y) and 0 <= cx < grid_size and 0 <= cy < grid_size:
+                    bear_path.append((cx, cy))
+                    cx += dx
+                    cy += dy
+                if (cx, cy) == (player_tile_x, player_tile_y):
+                    bear_path.append((cx, cy))
+                last_bear_move = current_time
+        else:
+            bear_out_los_time += delta
+            bear_in_los_time = 0
+            if bear_out_los_time > 3:
+                bear_active = False
+                bear_spawn_time = current_time
+        if bear_attacking:
+            if current_time - last_bear_move > 0.2:
+                if bear_path:
+                    next_tile = bear_path.pop(0)
+                    bear_tile = next_tile
+                    bear_pos = tile_center(bear_tile[0], bear_tile[1])
+                    last_bear_move = current_time
+                    if bear_tile == (player_tile_x, player_tile_y):
+                        health = max(0, health - 3)
+                        blink_start = current_time
+                        blink_color = (1, 0, 0)
+                        bear_active = False
+                        bear_spawn_time = current_time
+                        consecutive_bear += 1
+                        if consecutive_bear >= 2:
+                            game_over = True
+                        if health <= 0:
+                            game_over = True
+                else:
+                    bear_active = False
+                    bear_spawn_time = current_time
 
 def idle():
     current_time = time.time()
@@ -329,14 +495,37 @@ def idle():
     update_bear(delta)
     glutPostRedisplay()
 
-
+def setupCamera():
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(fovY, 1.25, 0.1, 1500)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
+    if camera_mode == 0:
+        cx = camera_radius * math.cos(camera_angle * deg2rad)
+        cy = camera_radius * math.sin(camera_angle * deg2rad)
+        cz = camera_height
+        gluLookAt(cx, cy, cz, 0, 0, 0, 0, 0, 1)
+    else:
+        head_z = 120
+        camera_z = 160
+        dx, dy = dir_delta[player_dir]
+        eye_x, eye_y, _ = player_pos
+        eye_z = camera_z
+        look_x = eye_x + dx * tile_size * 10
+        look_y = eye_y + dy * tile_size * 10
+        look_z = head_z
+        gluLookAt(eye_x, eye_y, eye_z, look_x, look_y, look_z, 0, 0, 1)
 
 def showScreen():
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
-    glViewport(0, 0, 1000, 800)  
+    glViewport(0, 0, 1000, 800)
+    setupCamera()
     draw_grid()
     draw_player()
+    if bear_active:
+        draw_bear()
     draw_obstacles_and_items()
     glClear(GL_DEPTH_BUFFER_BIT)
     draw_red_dot()
@@ -360,6 +549,8 @@ def main():
     glutInitWindowPosition(0, 0)
     glutCreateWindow(b"Hunt or Haunt!")
     glutDisplayFunc(showScreen)
+    glutKeyboardFunc(keyboardListener)
+    glutSpecialFunc(specialKeyListener)
     glutMouseFunc(mouseListener)
     glutIdleFunc(idle)
     quad = gluNewQuadric()
