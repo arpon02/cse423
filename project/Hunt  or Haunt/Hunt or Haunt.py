@@ -319,7 +319,6 @@ def mouseListener(button, state, x, y):
     glutPostRedisplay()
 
 
-
 def idle():
     current_time = time.time()
     global last_time
