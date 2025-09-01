@@ -31,3 +31,8 @@ The **treasure hunter (player)** searches for treasure underground in a forest f
 - Health bar reaches 0.
 - **Win:** Score reaches 10.
 - **Fail:** No treasure found in 10 attempts.
+
+
+# by 22301690 - Sajid Bin Kawsar
+23101341 - SHAFEEN IBNEY FAROOK
+22201753 - Aurpon Sharma
