@@ -5,16 +5,16 @@
 The **treasure hunter (player)** searches for treasure underground in a forest full of unexpected surprises.
 
 ## Features
-- Player moves left, right, forward, and backward with **W, X, Y, Z** keys.
+- Player moves forward, and backward, rotate clockwise,antoclockwise with **W, D, A, S** keys.
 - Camera angle changes with **arrow keys**.
 - Player mines the ground beneath their position using **mouse left click** (10 chances per round; resets on treasure found).
 - Finding a treasure increases the score, and resets mining chances to 0.
-- Finding a **fruit**: Player turns green for 0.5 sec, speed increases (up to limit), and health bar increases by 1 (max 5, initialized initially).
+- Finding a **fruit**: Player head turns green for 0.5 sec, speed increases (up to limit), and health bar increases by 1 (max 5, initialized initially).
 - Finding a **wild mushroom**: Player turns red for 0.5 sec, loses 1 health bar, and speed decreases.
 
 ### Obstacles
 - **Boulders and bushes**: Cannot mine under them.
-- **Monkeys and tigers**:
+- **bear**:
   - Attack player after 3 sec in their line of sight.
   - Destroy bushes/stones with **X** key press.
   - Monkey attacks: Lose 2 treasures. Avoid by moving or hiding.
